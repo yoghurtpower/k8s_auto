@@ -1,0 +1,47 @@
+def label = "docker-${UUID.randomUUID().toString()}"
+
+podTemplate(label: label, yaml: """
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: docker
+    image: docker:19.03
+    command: ['cat']
+    tty: true
+    volumeMounts:
+    - name: dockersock
+      mountPath: /var/run/docker.sock
+    - name: docker-config
+      mountPath: /root/.docker
+  volumes:
+  - name: dockersock
+    hostPath:
+      path: /var/run/docker.sock
+  - name: docker-config
+    configMap:
+      name: docker-config
+"""
+  ) {
+
+  def image = "shekeriev/k8s-jenkins:latest"
+  
+  node(label) 
+  {
+    stage('Build Docker image') 
+    {
+      git 'https://github.com/shekeriev/simple-docker-image.git'
+      container('docker') 
+      {
+        sh "docker build -t ${image} ."
+      }
+    }
+    stage ("Push")
+    {
+      container('docker') 
+      {
+        sh "docker push ${image}"
+      }
+    }
+  }
+} 

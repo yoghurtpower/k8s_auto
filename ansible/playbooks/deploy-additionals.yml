@@ -1,0 +1,66 @@
+---
+- hosts: k8s-master
+  become: true
+  vars:
+    node_ip: "192.168.99.100"
+  tasks:
+  - name: Making a config map ...
+    become: false
+    command: kubectl create configmap docker-config --from-file=/home/vagrant/.docker/config.json
+
+  - name: Deploy ELK
+    become: false
+    command: kubectl apply -f /vagrant/elastic-stack/ -R
+
+  - name: Deploy filebeat
+    become: false
+    command: kubectl apply -f /vagrant/filebeat/ -R
+
+  - name: Deploy metricbeat
+    become: false
+    command: kubectl apply -f /vagrant/metricbeat/ -R
+
+  - name: Deploy Jenkins NS
+    become: false
+    command: kubectl create namespace jenkins
+
+  - name: Deploy NFS StorageClass
+    become: false
+    command: kubectl apply -f /vagrant/nfs_deploy/default-sc.yaml
+
+  - name: Deploy NFS RBAC
+    become: false
+    command: kubectl apply -f /vagrant/nfs_deploy/rbac.yaml
+
+  - name: Deploy NFS Provisioner
+    become: false
+    command: kubectl apply -f /vagrant/nfs_deploy/deployment.yaml
+
+  - name: Deploy NFS pvc
+    become: false
+    command: kubectl apply -f /vagrant/nfs_deploy/pvc02.yaml -n jenkins
+
+  - name: Deploy NFS pvc
+    become: false
+    command: kubectl apply -f /vagrant/nfs_deploy/pvc.yaml -n jenkins
+
+  - name: Install Helm
+    become: true
+    command: snap install helm --classic
+
+  - name: Add Helm Repo
+    become: false
+    command: /snap/bin/helm repo add stable https://kubernetes-charts.storage.googleapis.com/
+
+  - name: Update Helm Repo
+    become: false
+    command: /snap/bin/helm repo update
+
+  - name: Install Jenkins
+    become: false
+    command: /snap/bin/helm install jenkins --namespace jenkins --set master.serviceType=NodePort --set persistence.existingClaim=pvc01 stable/jenkins
+
+  - name: Create Jenkins binding
+    become: false
+    command: kubectl create clusterrolebinding jenkins --clusterrole=cluster-admin --serviceaccount=jenkins:default
+

@@ -1,0 +1,45 @@
+def label = "kaniko-${UUID.randomUUID().toString()}"
+
+podTemplate(name: 'kaniko', label: label, yaml: """
+kind: Pod
+metadata:
+  name: kaniko
+spec:
+  containers:
+  - name: kaniko
+    image: gcr.io/kaniko-project/executor:debug
+    imagePullPolicy: Always
+    command:
+    - /busybox/cat
+    tty: true
+    volumeMounts:
+      - name: kaniko-docker-config
+        mountPath: /root/.docker
+  restartPolicy: Never
+  volumes:
+    - name: kaniko-docker-config
+      configMap:
+        name: kaniko-docker-config
+"""
+  ) {
+
+  node(label) {
+    stage('Build with Kaniko') {
+      git 'https://github.com/shekeriev/simple-docker-image.git'
+      container(name: 'kaniko', shell: '/busybox/sh') {
+        withEnv(['PATH+EXTRA=/busybox:/kaniko']) {
+          sh '''#!/busybox/sh
+          /kaniko/executor -f `pwd`/Dockerfile -c `pwd` --destination=shekeriev/k8s-jenkins-multi:1 --force --cleanup 
+          '''
+        }
+      }
+      container(name: 'kaniko', shell: '/busybox/sh') {
+        withEnv(['PATH+EXTRA=/busybox:/kaniko']) {
+          sh '''#!/busybox/sh
+          /kaniko/executor -f `pwd`/Dockerfile -c `pwd` --destination=shekeriev/k8s-jenkins-multi:2 --force --cleanup 
+          '''
+        }
+      }
+    }
+  }
+} 

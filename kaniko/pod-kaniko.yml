@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kaniko
+spec:
+  containers:
+  - name: kaniko
+    image: gcr.io/kaniko-project/executor:latest
+    args: ["--dockerfile=./Dockerfile",
+            "--context=/tmp/kaniko/",
+            "--destination=docker.io/shekeriev/kaniko:latest",
+            "--force" ]
+    volumeMounts:
+      - name: docker-config
+        mountPath: /root/.docker/
+      - name: demo
+        mountPath: /tmp/kaniko
+  restartPolicy: Never
+  initContainers:
+    - image: python
+      name: demo
+      command: ["/bin/sh"]
+      args: ["-c", "git clone https://github.com/shekeriev/simple-docker-image.git /tmp/kaniko"] 
+      volumeMounts:
+      - name: demo
+        mountPath: /tmp/kaniko
+  restartPolicy: Never
+  volumes:
+    - name: docker-config
+      configMap:
+        name: docker-config
+    - name: demo
+      emptyDir: {}

@@ -1,0 +1,120 @@
+Vagrant.configure('2') do |config|
+
+  config.ssh.insert_key = false
+  
+  config.vm.define "node-1" do |node1|
+    node1.vm.box = "generic/ubuntu2004"
+    node1.vm.hostname = 'k8s-node-1'
+    node1.vm.network "private_network", ip: "192.168.99.101", netmask: "255.255.255.0"
+    node1.vm.provision "shell", path: "add_hosts.sh"
+    
+    node1.vm.provider :vmware_esxi do |esxi|
+      esxi.esxi_hostname = 'vsphere.yp'
+      esxi.esxi_username = 'root'
+      esxi.esxi_password = 'file:/root/esxi_password'
+      esxi.esxi_hostport = 22
+  #VM Network - Vagrant
+  #InfraRakai - "Public", so I can access it from my laptop
+      esxi.esxi_virtual_network = ['VM Network', 'InfraRakia']
+      #esxi.clone_from_vm = 'ubuntu18.template'
+      esxi.guest_name_prefix = 'V-k8s-'
+      esxi.guest_memsize = '4096'
+      esxi.guest_numvcpus = '4'
+  #Using thin to save some free space
+      esxi.guest_disk_type = 'thin'
+      #esxi.local_use_ip_cache = 'False'
+    end
+end
+
+
+config.vm.define "node-2" do |node2|
+  node2.vm.box = "generic/ubuntu2004"
+  node2.vm.hostname = 'k8s-node-2'
+  node2.vm.network "private_network", ip: "192.168.99.102", netmask: "255.255.255.0"
+  node2.vm.provision "shell", path: "add_hosts.sh"
+  
+  node2.vm.provider :vmware_esxi do |esxi|
+    esxi.esxi_hostname = 'vsphere.yp'
+    esxi.esxi_username = 'root'
+    esxi.esxi_password = 'file:/root/esxi_password'
+    esxi.esxi_hostport = 22
+#VM Network - Vagrant
+#InfraRakai - "Public", so I can access it from my laptop
+    esxi.esxi_virtual_network = ['VM Network', 'InfraRakia']
+    #esxi.clone_from_vm = 'ubuntu18.template'
+    esxi.guest_name_prefix = 'V-k8s'
+    esxi.guest_memsize = '4096'
+    esxi.guest_numvcpus = '4'
+#Using thin to save some free space
+    esxi.guest_disk_type = 'thin'
+    #esxi.local_use_ip_cache = 'False'
+  end
+end
+  
+      config.vm.define "master" do |master|
+          master.vm.box = "generic/ubuntu2004"
+          master.vm.hostname = 'k8s-master'
+          master.vm.network "private_network", ip: "192.168.99.100", netmask: "255.255.255.0"
+
+          master.vm.synced_folder('.', '/vagrant', type: 'rsync')
+          master.vm.provision "shell", path: "add_hosts.sh"
+
+          master.vm.provider :vmware_esxi do |esxi|
+            esxi.esxi_hostname = 'vsphere.yp'
+            esxi.esxi_username = 'root'
+            esxi.esxi_password = 'file:/root/esxi_password'
+            esxi.esxi_hostport = 22
+        #VM Network - Vagrant
+        #InfraRakai - "Public", so I can access it from my laptop
+            esxi.esxi_virtual_network = ['VM Network', 'InfraRakia']
+            #esxi.clone_from_vm = 'ubuntu18.template'
+            esxi.guest_name_prefix = 'V-k8s-'
+            esxi.guest_memsize = '4096'
+            esxi.guest_numvcpus = '4'
+        #Using thin to save some free space
+            esxi.guest_disk_type = 'thin'
+            #esxi.local_use_ip_cache = 'False'
+          end
+
+          master.vm.provision "shell", inline: <<EOS
+          echo "* Install Ansible ..."
+          sudo apt install ansible sshpass nfs-kernel-server -y
+    
+          echo "* Set Ansible configuration in /etc/ansible/ansible.cfg ..."
+          sudo cp /vagrant/ansible/ansible.cfg /etc/ansible/ansible.cfg
+    
+          echo "* Set Ansible global inventory in /etc/ansible/hosts ..."
+          sudo cp /vagrant/ansible/hosts /etc/ansible/hosts
+    
+          echo "* Copy Ansible playbooks in /playbooks/ ..."
+          sudo cp -R /vagrant/ansible/playbooks /playbooks
+    
+          echo "* Prepare /playbooks/roles folder ..."
+          sudo cp -R /vagrant/ansible/roles /playbooks
+    
+          echo "* Install Ansible role and docker in /playbooks/roles/ ..."
+          sudo ansible-galaxy install geerlingguy.docker -p /playbooks/roles/
+          sudo ansible-galaxy install geerlingguy.kubernetes -p /playbooks/roles/
+    
+          echo "* Configure NFS server ..."
+          sudo mkdir -p /vagrant/nfs
+          sudo chown -R nobody:nogroup /vagrant/nfs
+          sudo chmod 777 /vagrant/nfs
+          sudo cp -R /vagrant/exports /etc/exports
+          sudo exportfs -a
+          sudo systemctl restart nfs-kernel-server
+
+          echo "* Execute Ansible Playbooks ..."
+          sudo ansible-playbook /playbooks/install-all.yml
+
+          echo "* Configure Kaniko and Docker ..."
+          sudo chmod +x /vagrant/shell_provisioning.sh
+          sudo /vagrant/shell_provisioning.sh
+
+          echo "* Deploy NFS-SC, Jenkins and ELKB ..."
+          sudo ansible-playbook /playbooks/deploy-additionals.yml
+EOS
+      end
+  
+  
+  end

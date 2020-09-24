@@ -1,0 +1,10 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: nfs-storage
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: k8s-master.yp.lab/nfs
+reclaimPolicy: Retain
+parameters:
+  archiveOnDelete: "false"

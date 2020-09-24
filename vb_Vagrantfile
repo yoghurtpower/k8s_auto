@@ -1,0 +1,97 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure("2") do |config|
+  config.ssh.insert_key = false
+
+
+    # node 1
+    config.vm.define "node1" do |node1|
+      node1.vm.box = "generic/ubuntu2004"
+      node1.vm.hostname = "k8s-node-1"
+      node1.vm.network "private_network", ip: "192.168.99.101"
+      node1.vm.provision "shell", path: "add_hosts.sh"
+  
+      node1.vm.provider "virtualbox" do |v|
+        v.gui = false
+        v.memory = 4096
+        v.cpus = 2
+        v.customize ["modifyvm", :id, "--natdnshostresolver1", "on"]
+        v.customize ["modifyvm", :id, "--ioapic", "on"]
+      end
+    end
+
+  # node 2
+  config.vm.define "node2" do |node2|
+    node2.vm.box = "generic/ubuntu2004"
+    node2.vm.hostname = "k8s-node-2"
+    node2.vm.network "private_network", ip: "192.168.99.102"
+    node2.vm.provision "shell", path: "add_hosts.sh"
+
+    node2.vm.provider "virtualbox" do |v|
+      v.gui = false
+      v.memory = 4096
+      v.cpus = 2
+      v.customize ["modifyvm", :id, "--natdnshostresolver1", "on"]
+      v.customize ["modifyvm", :id, "--ioapic", "on"]
+    end
+  end
+
+    # 
+  config.vm.define "master" do |master|
+      master.vm.box = "generic/ubuntu2004"
+      master.vm.hostname = "k8s-master"
+      master.vm.network "private_network", ip: "192.168.99.100"
+      master.vm.synced_folder ".", "/vagrant"
+      master.vm.provision "shell", path: "add_hosts.sh"
+  
+      master.vm.provider "virtualbox" do |v|
+        v.gui = false
+        v.memory = 4096
+        v.cpus = 2
+        v.customize ["modifyvm", :id, "--natdnshostresolver1", "on"]
+        v.customize ["modifyvm", :id, "--ioapic", "on"]
+      end
+
+      master.vm.provision "shell", inline: <<EOS
+          echo "* Install Ansible ..."
+          sudo apt install ansible sshpass nfs-kernel-server -y
+    
+          echo "* Set Ansible configuration in /etc/ansible/ansible.cfg ..."
+          sudo cp /vagrant/ansible/ansible.cfg /etc/ansible/ansible.cfg
+    
+          echo "* Set Ansible global inventory in /etc/ansible/hosts ..."
+          sudo cp /vagrant/ansible/hosts /etc/ansible/hosts
+    
+          echo "* Copy Ansible playbooks in /playbooks/ ..."
+          sudo cp -R /vagrant/ansible/playbooks /playbooks
+    
+          echo "* Prepare /playbooks/roles folder ..."
+          sudo cp -R /vagrant/ansible/roles /playbooks
+    
+          echo "* Install Ansible role and docker in /playbooks/roles/ ..."
+          sudo ansible-galaxy install geerlingguy.docker -p /playbooks/roles/
+          sudo ansible-galaxy install geerlingguy.kubernetes -p /playbooks/roles/
+    
+          echo "* Configure NFS server ..."
+          sudo mkdir -p /vagrant/nfs
+          sudo chown -R nobody:nogroup /vagrant/nfs
+          sudo chmod 777 /vagrant/nfs
+          sudo cp -R /vagrant/exports /etc/exports
+          sudo exportfs -a
+          sudo systemctl restart nfs-kernel-server
+
+          echo "* Execute Ansible Playbooks ..."
+          sudo ansible-playbook /playbooks/install-all.yml
+
+          echo "* Configure Kaniko and Docker ..."
+          sudo chmod +x /vagrant/shell_provisioning.sh
+          sudo /vagrant/shell_provisioning.sh
+
+          echo "* Deploy NFS-SC, Jenkins and ELKB ..."
+          sudo ansible-playbook /playbooks/deploy-additionals.yml
+EOS
+    end
+
+  
+end
